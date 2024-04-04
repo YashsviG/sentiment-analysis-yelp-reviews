@@ -5,7 +5,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 keys_to_remove = ["review_id", "business_id", "user_id", "date"]
-outfile = "./data2.json"
+outfile = "./cleaned_data.json"
 input_filename = "./test.json"
 punctuation = "\"#$%&'()*+,-./:;<=>@[\]^_`{|}~.\n"
 replacement_mapping = {"&": "and"}
@@ -53,12 +53,12 @@ def main():
 
     parser.add_argument("--input_raw_file", type=str, help="Raw json input filepath")
     parser.add_argument("--input_file", type=str, help="Process json input filepath")
-    parser.add_argument("--split-data", action="store_true", help="Flag to split data")
+    parser.add_argument("--split_data", action="store_true", help="Flag to split data")
 
     args = parser.parse_args()
 
     if args.split_data:
-        if not args.input_raw_file:
+        if not args.input_file:
             print("No Input file provided to split, using default values")
         split_data()
     elif args.input_raw_file:
