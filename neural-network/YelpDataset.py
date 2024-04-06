@@ -1,0 +1,37 @@
+import pandas as pd
+import torch
+from torch.utils.data import Dataset
+
+
+class YelpDataset(Dataset):
+    def __init__(self, json_file, chunk_size):
+        self.json_file = json_file
+        self.chunk_size = chunk_size
+        with open(json_file, 'r') as file:
+            self.length = sum(1 for _ in file)
+
+    def calculate_length(self):
+        json_reader = pd.read_json(self.json_file, lines=True, chunksize=self.chunk_size)
+        return sum(1 for chunk in json_reader for _ in chunk)
+
+    def __len__(self):
+        return (self.length + self.chunk_size - 1) // self.chunk_size
+
+    def __getitem__(self, idx):
+        chunk_data = []
+        start_line = idx * self.chunk_size
+        end_line = start_line + self.chunk_size
+        current_line = 0
+        with open(self.json_file, 'r') as file:
+            for line in file:
+                if start_line <= current_line < end_line:
+                    chunk_data.append(pd.read_json(line, lines=True))
+                current_line += 1
+                if current_line >= end_line:
+                    break
+
+        chunk = pd.concat(chunk_data, ignore_index=True)
+        X = torch.tensor(chunk.iloc[:, 4].values)
+        y = torch.tensor(chunk.iloc[:, :4].values)
+
+        return X, y

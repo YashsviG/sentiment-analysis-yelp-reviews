@@ -1,1 +1,5 @@
-json
+pandas
+scikit-learn
+torchtext
+torch
+transformers
