@@ -1,12 +1,16 @@
+from io import StringIO
+
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
+from transformers import AutoTokenizer
 
 
 class YelpDataset(Dataset):
-    def __init__(self, json_file, chunk_size):
+    def __init__(self, json_file, chunk_size, tokenizer_name):
         self.json_file = json_file
         self.chunk_size = chunk_size
+        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
         with open(json_file, 'r') as file:
             self.length = sum(1 for _ in file)
 
@@ -25,13 +29,16 @@ class YelpDataset(Dataset):
         with open(self.json_file, 'r') as file:
             for line in file:
                 if start_line <= current_line < end_line:
-                    chunk_data.append(pd.read_json(line, lines=True))
+                    chunk_data.append(pd.read_json(StringIO(line), lines=True))
                 current_line += 1
                 if current_line >= end_line:
                     break
 
         chunk = pd.concat(chunk_data, ignore_index=True)
-        X = torch.tensor(chunk.iloc[:, 4].values)
+        review_values = chunk.iloc[:, 4].values
+        tokenized_text = self.tokenizer(review_values.tolist(), padding=True, truncation=True)
+
+        X = torch.tensor(tokenized_text["input_ids"])
         y = torch.tensor(chunk.iloc[:, :4].values)
 
         return X, y

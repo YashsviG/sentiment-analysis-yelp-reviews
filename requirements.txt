@@ -3,3 +3,5 @@ scikit-learn
 torchtext
 torch
 transformers
+tqdm
+numpy
