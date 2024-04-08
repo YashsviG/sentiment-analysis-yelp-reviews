@@ -7,12 +7,12 @@ from sklearn.model_selection import train_test_split
 keys_to_remove = ["review_id", "business_id", "user_id", "date"]
 outfile = "./cleaned_data.json"
 # input_filename = "./test.json"
-punctuation = "\"#$%&'()*+,-./:;<=>@[\\]^_`{|}~.\n"
-replacement_mapping = {"&": "and"}
 
 
 # Remove punctuations from text
-def remove_punctuation(line):
+def remove_punctuation(line: pd.DataFrame):
+    punctuation = "\"#$%&'()*+,-./:;<=>@[\\]^_`{|}~.\n"
+    replacement_mapping = {"&": "and", "/": " or ", "\\": "or", "<": "lt", ">": "gt"}
     translation_table = str.maketrans("", "", punctuation)
 
     for char, replacement in replacement_mapping.items():
