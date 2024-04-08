@@ -79,7 +79,9 @@ def train(data_loader, _model, _classification_criterion, _regression_criterion,
             _optimizer.step()
             epoch_losses.append(loss.item())
             epoch_stars_accs.append(stars_accuracy.item())
-            epoch_ratings_accs.append(ratings_accuracy)
+
+            for rating in ratings_accuracy:
+                epoch_ratings_accs.append(rating.item())
 
     return np.mean(epoch_losses), np.mean(epoch_stars_accs), np.mean(epoch_ratings_accs)
 
@@ -106,20 +108,24 @@ def evaluate(data_loader, _model, _classification_criterion, _regression_criteri
                 loss = stars_loss + ratings_loss
                 epoch_losses.append(loss.item())
                 epoch_stars_accs.append(stars_accuracy.item())
-                epoch_ratings_accs.append(ratings_accuracy.item())
+                epoch_stars_accs.append(stars_accuracy.item())
+
+                for rating in ratings_accuracy:
+                    epoch_ratings_accs.append(rating.item())
 
     return np.mean(epoch_losses), np.mean(epoch_stars_accs), np.mean(epoch_ratings_accs)
 
 
 if __name__ == "__main__":
-    chunk_size = 10
+    chunk_size = 50
+
     transformer_name = "bert-base-uncased"
 
     training_data = YelpDataset("train_data.json", chunk_size, transformer_name)
-    train_dataloader = DataLoader(training_data, batch_size=1, shuffle=True, num_workers=0)
+    train_dataloader = DataLoader(training_data, batch_size=1, shuffle=True, num_workers=3)
 
     test_data = YelpDataset("test_data.json", chunk_size, transformer_name)
-    test_dataloader = DataLoader(test_data, batch_size=1, shuffle=True, num_workers=0)
+    test_dataloader = DataLoader(test_data, batch_size=1, shuffle=True, num_workers=3)
 
     transformer = transformers.AutoModel.from_pretrained(transformer_name)
     model = SentimentNetwork(transformer)
