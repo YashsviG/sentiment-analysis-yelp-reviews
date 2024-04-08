@@ -39,6 +39,6 @@ class YelpDataset(Dataset):
         tokenized_text = self.tokenizer(review_values.tolist(), padding=True, truncation=True)
 
         X = torch.tensor(tokenized_text["input_ids"])
-        y = torch.tensor(chunk.iloc[:, :4].values)
-
-        return X, y
+        y = torch.tensor(chunk.iloc[:, 0].values)
+        z = torch.tensor(chunk.iloc[:, 1:4].values)
+        return X, y, z
