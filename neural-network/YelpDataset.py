@@ -35,8 +35,9 @@ class YelpDataset(Dataset):
                     break
 
         chunk = pd.concat(chunk_data, ignore_index=True)
-        review_values = chunk.iloc[:, 4].values
-        tokenized_text = self.tokenizer(review_values.tolist(), padding=True, truncation=True)
+        review_values = chunk.iloc[:, 4]
+        review_values = review_values[review_values != ""]
+        tokenized_text = self.tokenizer(review_values.tolist(), padding=True, truncation=True, max_length=512)
 
         X = torch.tensor(tokenized_text["input_ids"])
         y = torch.tensor(chunk.iloc[:, 0].values)

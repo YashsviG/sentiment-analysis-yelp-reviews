@@ -12,21 +12,20 @@ SPECIAL_TOKENS = ["<unk>", "<pad>"]
 
 
 class SentimentNetwork(nn.Module):
-    def __init__(self, _transformer):
+    def __init__(self, vocab_size, embedding_dim):
         super().__init__()
-        self.transformer = _transformer
-        hidden_size = _transformer.config.hidden_size
-        self.stars_fc = nn.Linear(hidden_size, 5)
-        self.ratings_fc = nn.Linear(hidden_size, 3)
+
+        self.embedding = nn.Embedding(num_embeddings=vocab_size, embedding_dim=embedding_dim)
+        self.lstm = nn.LSTM(input_size=embedding_dim, hidden_size=128)
+        self.stars_fc = nn.Linear(128, 5)
+        self.ratings_fc = nn.Linear(128, 3)
 
     def forward(self, x):
-        output = self.transformer(x, output_attentions=True)
-        hidden = output.last_hidden_state
-
-        attention = output.attentions[-1]
-        cls_hidden = hidden[:, 0, :]
-        stars_prediction = self.stars_fc(tanh(cls_hidden))
-        ratings_prediction = self.ratings_fc(cls_hidden)
+        x = self.embedding(x)
+        x, (hidden_state, cell_state) = self.lstm(x)
+        x = x[:, -1, :]
+        stars_prediction = self.stars_fc(tanh(x))
+        ratings_prediction = self.ratings_fc(x)
         return stars_prediction, ratings_prediction
 
 
@@ -40,6 +39,7 @@ def get_accuracy(prediction, label):
     predicted_classes = prediction.argmax(dim=-1)
     correct_predictions = predicted_classes.eq(label).sum()
     accuracy = correct_predictions / batch_size
+    print(f"\nStars Accuracy: {accuracy:.2f}")
     return accuracy
 
 
@@ -51,6 +51,7 @@ def get_regression_accuracy(predicted_values, true_values, tolerance):
 
     # Calculate the "accuracy" for each target
     accuracies = torch.mean(within_tolerance.float(), dim=0)
+    print(f"Ratings Accuracy: {accuracies.tolist()}")
 
     return accuracies.tolist()
 
@@ -81,7 +82,7 @@ def train(data_loader, _model, _classification_criterion, _regression_criterion,
             epoch_stars_accs.append(stars_accuracy.item())
 
             for rating in ratings_accuracy:
-                epoch_ratings_accs.append(rating.item())
+                epoch_ratings_accs.append(rating)
 
     return np.mean(epoch_losses), np.mean(epoch_stars_accs), np.mean(epoch_ratings_accs)
 
@@ -117,9 +118,9 @@ def evaluate(data_loader, _model, _classification_criterion, _regression_criteri
 
 
 if __name__ == "__main__":
-    chunk_size = 50
-
-    transformer_name = "bert-base-uncased"
+    chunk_size = 350
+    _device = device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    transformer_name = 'distilbert/distilbert-base-uncased'
 
     training_data = YelpDataset("train_data.json", chunk_size, transformer_name)
     train_dataloader = DataLoader(training_data, batch_size=1, shuffle=True, num_workers=3)
@@ -128,19 +129,19 @@ if __name__ == "__main__":
     test_dataloader = DataLoader(test_data, batch_size=1, shuffle=True, num_workers=3)
 
     transformer = transformers.AutoModel.from_pretrained(transformer_name)
-    model = SentimentNetwork(transformer)
-
-    _device = device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = SentimentNetwork(30522, 768)
     model.to(_device)
+    print(torch.cuda.memory_summary())
 
     optimizer = optim.Adam(model.parameters(), lr=1e-5)
     classification_criterion = nn.CrossEntropyLoss()
     classification_criterion.to(_device)
+    print(torch.cuda.memory_summary())
 
     regression_criterion = nn.MSELoss()
     regression_criterion.to(_device)
 
-    n_epochs = 3
+    n_epochs = 1
     best_valid_loss = float("inf")
 
     metrics = collections.defaultdict(list)
