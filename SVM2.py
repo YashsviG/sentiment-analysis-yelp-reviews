@@ -27,7 +27,7 @@ def main():
 
     reviews = []
     # Will need to grab file name from the user
-    with open('test_data.json', 'r', encoding="utf-8") as train:
+    with open('train_data.json', 'r', encoding="utf-8") as train:
         print('Pre-processing data from training dataset...\n')
         total = 0
         processed = 0
