@@ -11,7 +11,7 @@ DEFAULT_CHUNK_SIZE = 1000
 keys_to_remove = ["review_id", "business_id", "user_id", "date"]
 
 punctuation = "\"#$%&'()*+,-./:;<=>@[\\]^_`{|}~.\n"
-replacement_mapping = {"&": " and ", "/": " or ", "\\": " or ", " < ": "lt", " > ": "gt"}
+replacement_mapping = {"&": " and ", "/": " or ", "\\": " or ", "<": " lt ", ">": " gt "}
 
 
 # Remove punctuations from text
@@ -25,9 +25,8 @@ def remove_punctuation(line: pd.DataFrame):
 
 
 def load_raw_json(input_filename=DEFAULT_RAW_DATA_FILE):
-
     print("Loading raw data from '{}'...".format(input_filename))
-    with open(input_filename, "r") as file, open(DEFAULT_CLEANED_DATA_FILE, "a") as output_file:
+    with open(input_filename, "r", encoding='cp437') as file, open(DEFAULT_CLEANED_DATA_FILE, "a") as output_file:
         for line in file:
             data = json.loads(line)
             for key in keys_to_remove:
