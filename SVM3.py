@@ -57,14 +57,14 @@ def main():
                 reviews.append(review)
                 total_processed += 1  # Increment total_processed
                 
-                if total_processed % args.batch_size == 0 or total_processed == args.max_train_entries:
+                # if total_processed % args.batch_size == 0 or total_processed == args.max_train_entries:
                     # Train the model for the current batch
-                    train_batch(reviews, args.technique, batch_num)
-                    batch_num += 1
-                    reviews = []  # Reset reviews list for the next batch
+                train_batch(reviews, args.technique, batch_num)
+                batch_num += 1
+                reviews = []  # Reset reviews list for the next batch
                 
-                if total_processed == args.max_train_entries:
-                    break
+                # if total_processed == args.max_train_entries:
+                #     break
                 
             except StopIteration:
                 break
