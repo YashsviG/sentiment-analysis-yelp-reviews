@@ -29,14 +29,15 @@ class YelpDataset(Dataset):
         with open(self.json_file, 'r') as file:
             for line in file:
                 if start_line <= current_line < end_line:
-                    chunk_data.append(pd.read_json(StringIO(line), lines=True))
+                    panda_line = pd.read_json(StringIO(line), lines=True)
+                    if panda_line["text"].values[0] != "":
+                        chunk_data.append(panda_line)
                 current_line += 1
                 if current_line >= end_line:
                     break
 
         chunk = pd.concat(chunk_data, ignore_index=True)
         review_values = chunk.iloc[:, 4]
-        review_values = review_values[review_values != ""]
         tokenized_text = self.tokenizer(review_values.tolist(), padding=True, truncation=True, max_length=512)
 
         X = torch.tensor(tokenized_text["input_ids"])

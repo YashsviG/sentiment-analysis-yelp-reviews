@@ -99,23 +99,18 @@ def evaluate(data_loader, _model, _classification_criterion, _regression_criteri
         for batch in tqdm(data_loader, desc="evaluating..."):
             ids = batch[0].to(_device)
             star_labels = batch[1].to(_device)
-            ratings_values = batch[2].to(_device)
+            # ratings_values = batch[2].to(_device)
 
             for i in range(len(ids)):
-                stars_predictions, ratings_predictions = _model(ids[i])
-                stars_loss = _classification_criterion(stars_predictions, star_labels[i] - 1)
-                stars_accuracy = get_accuracy(stars_predictions, star_labels[i] - 1)
+                predictions = _model(ids[i])
+                loss = _classification_criterion(predictions, star_labels[i] - 1)
+                accuracy = get_accuracy(predictions, star_labels[i] - 1)
 
-                ratings_loss = _regression_criterion(ratings_predictions, ratings_values[i])
-                ratings_accuracy = get_regression_accuracy(ratings_predictions, ratings_values[i], 0.2)
+                # ratings_loss = _regression_criterion(ratings_predictions, ratings_values[i])
+                # ratings_accuracy = get_regression_accuracy(ratings_predictions, ratings_values[i], 0.2)
 
-                loss = stars_loss + ratings_loss
                 epoch_losses.append(loss.item())
-                epoch_stars_accs.append(stars_accuracy.item())
-                epoch_stars_accs.append(stars_accuracy.item())
-
-                for rating in ratings_accuracy:
-                    epoch_ratings_accs.append(rating.item())
+                epoch_stars_accs.append(accuracy.item())
 
     return np.mean(epoch_losses), np.mean(epoch_stars_accs), np.mean(epoch_ratings_accs)
 
