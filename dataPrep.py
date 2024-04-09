@@ -15,7 +15,7 @@ replacement_mapping = {"&": " and ", "/": " or ", "\\": " or ", "<": " lt ", ">"
 
 
 # Remove punctuations from text
-def remove_punctuation(line: pd.DataFrame):
+def remove_punctuation(line):
     translation_table = str.maketrans("", "", punctuation)
 
     for char, replacement in replacement_mapping.items():
@@ -25,8 +25,7 @@ def remove_punctuation(line: pd.DataFrame):
 
 
 def load_raw_json(input_filename=DEFAULT_RAW_DATA_FILE):
-    print("Loading raw data from '{}'...".format(input_filename))
-    with open(input_filename, "r", encoding='cp437') as file, open(DEFAULT_CLEANED_DATA_FILE, "a") as output_file:
+    with open(input_filename, "r") as file, open(DEFAULT_CLEANED_DATA_FILE, "a+") as output_file:
         for line in file:
             data = json.loads(line)
             for key in keys_to_remove:
@@ -67,20 +66,36 @@ def main():
     parser = argparse.ArgumentParser(description="Data Prep Script")
 
     parser.add_argument("--input_raw_file", type=str, help="Raw json input filepath")
-    parser.add_argument("--input_file", type=str, help="Process json input filepath")
-    parser.add_argument("--split_data", action="store_true", help="Flag to split data")
+    parser.add_argument("--input_file", type=str, help="Cleaned json input filepath")
+    parser.add_argument("--split_data", action="store_true", help="Flag to split data, can be run after cleaning raw "
+                                                                  "data")
 
     args = parser.parse_args()
 
-    if args.split_data:
-        if not args.input_file:
-            print("No Input file provided to split, using default values")
-            split_data()
-        else:
-            split_data(args.input_file)
-    elif args.input_raw_file:
+    # Clean data first
+    if args.input_raw_file:
+        print("Cleaning raw file at '{}'...".format(args.input_raw_file))
         load_raw_json(args.input_raw_file)
-    else:
+        print("Complete.")
+
+    # Split cleaned data
+    if args.split_data:
+
+        # If split but no input file
+        if not args.input_file and not args.input_raw_file:
+            print("No Input file provided to split, running split on " + DEFAULT_CLEANED_DATA_FILE)
+            split_data()
+        # If clean and split
+        elif not args.input_file and args.input_raw_file:
+            print("Running Split on newly cleaned data.")
+            split_data()
+        # If user input split
+        else:
+            print("Running Split on input file at " + args.input_file)
+            split_data(args.input_file)
+
+    # if no args
+    if not args.split_data and not args.input_raw_file:
         print("No action specified. Use --split-data or provide --input_raw_file")
 
 
