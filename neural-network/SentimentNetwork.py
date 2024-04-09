@@ -12,21 +12,28 @@ SPECIAL_TOKENS = ["<unk>", "<pad>"]
 
 
 class SentimentNetwork(nn.Module):
-    def __init__(self, vocab_size, embedding_dim):
+    def __init__(self, vocab_size, embedding_dim, is_classification):
         super().__init__()
 
         self.embedding = nn.Embedding(num_embeddings=vocab_size, embedding_dim=embedding_dim)
         self.lstm = nn.LSTM(input_size=embedding_dim, hidden_size=128)
-        self.stars_fc = nn.Linear(128, 5)
-        self.ratings_fc = nn.Linear(128, 3)
+
+        self.is_classification = is_classification
+        if is_classification:
+            self.fc = nn.Linear(128, 5)
+        else:
+            self.fc = nn.Linear(128, 1)
 
     def forward(self, x):
         x = self.embedding(x)
-        x, (hidden_state, cell_state) = self.lstm(x)
+        x, (_, _) = self.lstm(x)
         x = x[:, -1, :]
-        stars_prediction = self.stars_fc(tanh(x))
-        ratings_prediction = self.ratings_fc(x)
-        return stars_prediction, ratings_prediction
+
+        if self.is_classification:
+            x = tanh(x)
+
+        prediction = self.fc(x)
+        return prediction
 
 
 def tokenize(data_set, _tokenizer):
@@ -64,25 +71,21 @@ def train(data_loader, _model, _classification_criterion, _regression_criterion,
     for batch in tqdm(data_loader, desc="training..."):
         ids = batch[0].to(_device)
         star_labels = batch[1].to(_device)
-        ratings_values = batch[2].to(_device)
+        # ratings_values = batch[2].to(_device)
 
         for i in range(len(ids)):
-            stars_predictions, ratings_predictions = _model(ids[i])
-            stars_loss = _classification_criterion(stars_predictions, star_labels[i] - 1)
-            stars_accuracy = get_accuracy(stars_predictions, star_labels[i] - 1)
+            predictions = _model(ids[i])
+            loss = _classification_criterion(predictions, star_labels[i] - 1)
+            accuracy = get_accuracy(predictions, star_labels[i] - 1)
 
-            ratings_loss = _regression_criterion(ratings_predictions, ratings_values[i].float())
-            ratings_accuracy = get_regression_accuracy(ratings_predictions, ratings_values[i], 0.2)
+            # ratings_loss = _regression_criterion(ratings_predictions, ratings_values[i].float())
+            # ratings_accuracy = get_regression_accuracy(ratings_predictions, ratings_values[i], 0.2)
 
-            loss = stars_loss + ratings_loss
             _optimizer.zero_grad()
             loss.backward()
             _optimizer.step()
             epoch_losses.append(loss.item())
-            epoch_stars_accs.append(stars_accuracy.item())
-
-            for rating in ratings_accuracy:
-                epoch_ratings_accs.append(rating)
+            epoch_stars_accs.append(accuracy.item())
 
     return np.mean(epoch_losses), np.mean(epoch_stars_accs), np.mean(epoch_ratings_accs)
 
@@ -119,8 +122,9 @@ def evaluate(data_loader, _model, _classification_criterion, _regression_criteri
 
 if __name__ == "__main__":
     chunk_size = 350
-    _device = device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     transformer_name = 'distilbert/distilbert-base-uncased'
+    print(torch.zeros(1).cuda())
 
     training_data = YelpDataset("train_data.json", chunk_size, transformer_name)
     train_dataloader = DataLoader(training_data, batch_size=1, shuffle=True, num_workers=3)
@@ -129,7 +133,7 @@ if __name__ == "__main__":
     test_dataloader = DataLoader(test_data, batch_size=1, shuffle=True, num_workers=3)
 
     transformer = transformers.AutoModel.from_pretrained(transformer_name)
-    model = SentimentNetwork(30522, 768)
+    model = SentimentNetwork(30522, 768, True)
     model.to(_device)
     print(torch.cuda.memory_summary())
 
