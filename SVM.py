@@ -26,18 +26,25 @@ for name, clf in zip(names, classifiers):
         ]
     )
 
-yelp = pd.read_json('cleaned_data.json', lines=True)
+# yelp = pd.read_json('cleaned_data.json', lines=True)
+CHUNK_SIZE = 10000
+chunks = []
+for chunk in pd.read_json('train_data.json',lines=True, chunksize=CHUNK_SIZE):
+    chunks.append(chunk)
+yelp = pd.concat(chunks, ignore_index=True)
+
 yelp.head()
 yelp.info()
 yelp['Text Length'] = yelp['text'].apply(len)
 yelp.corr(numeric_only=True)
 
-yelp_class_stars = yelp[(yelp['stars'] == 1) | (yelp['stars']==5)]
-yelp_class_stars['stars'].value_counts()
-yelp_class_stars.info()
+yelp_class = yelp[(yelp['stars'] == 1)| (yelp['stars'] == 2)| (yelp['stars'] == 3)| (yelp['stars'] == 4) | (yelp['stars']==5)]
+yelp_class['stars'].value_counts()
+yelp_class.info()
 
-X = yelp_class_stars['text']
-y = yelp_class_stars['stars']
+X = yelp_class['text']
+y = yelp_class['stars']
+y2 = yelp_class['useful']
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
