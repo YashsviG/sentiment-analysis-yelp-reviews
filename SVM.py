@@ -1,7 +1,7 @@
 import argparse
 import json
 import pickle
-
+import multiprocessing as mp
 import pandas as pd
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.metrics import classification_report, confusion_matrix
@@ -24,7 +24,7 @@ def preprocess_text_data(file_path):
     with open(file_path, "r") as f:
         for line in f:
             data = json.loads(line)
-            df = df._append(data, ignore_index=True)
+            df = pd.concat([df, pd.DataFrame([data])], ignore_index=True)
 
     # Check and replace non-string entries with "NOT_A_STRING"
     df["text"] = df["text"].apply(lambda x: str(x) if not isinstance(x, str) else x)
@@ -46,6 +46,16 @@ def preprocess_text_data(file_path):
     print(total_valid_rows)
     return filtered_df
 
+def parallelize_ngrams(X_train, X_test, y_train, y_test):
+    count_vectorizer = CountVectorizer(ngram_range=(1, 1))
+    X_train_counts = count_vectorizer.fit_transform(X_train)
+    X_test_counts = count_vectorizer.transform(X_test)
+    return X_train_counts, X_test_counts
+
+def train_svm(X_train_counts, y_train):
+    svm_stars = SVC(kernel="linear")
+    svm_stars.fit(X_train_counts, y_train)
+    return svm_stars
 
 def stars(experiment1=False, experiment2=False):
     training_data = preprocess_text_data(training_file)
@@ -61,17 +71,20 @@ def stars(experiment1=False, experiment2=False):
         X_train_counts, X_test_counts = experiment_ngrams(X_train, X_test, y_train, y_test)
     else:
         # Feature extraction
-        count_vectorizer = CountVectorizer(ngram_range=(1, 1))
-        X_train_counts = count_vectorizer.fit_transform(X_train)
-        X_test_counts = count_vectorizer.transform(X_test)
+        # Parallelize feature extraction
+         with mp.Pool(processes=mp.cpu_count()) as pool:
+             results = pool.starmap(parallelize_ngrams, [(X_train, X_test, y_train, y_test)])
+             X_train_counts, X_test_counts = results[0]
+
+    
 
     # Model training
     if(experiment2):
         svm_stars = experiment_kernel_optimization(X_train_counts, X_test_counts, y_train, y_test)
     else:
-        svm_stars = SVC(kernel="linear")
-    
-    svm_stars.fit(X_train_counts, y_train)
+        # Train SVM in parallel
+        with mp.Pool(processes=mp.cpu_count()) as pool:
+            svm_stars = pool.apply(train_svm, args=(X_train_counts, y_train))
 
     pred = svm_stars.predict(X_test_counts)
 
