@@ -36,7 +36,6 @@ def load_raw_json(input_filename):
 def split_data(output_file=outfile):
     print(f"Output file is {output_file}")
     df = pd.read_json(output_file, lines=True, chunksize=100)
-    print(df)
 
     train_ratio = 0.8
     test_ratio = 0.10
