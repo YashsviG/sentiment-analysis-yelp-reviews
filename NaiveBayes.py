@@ -15,6 +15,7 @@ DEFAULT_TRAIN_FILE = 'data/train_data.json'
 DEFAULT_MODEL_FILE = 'naive_bayes.pkl'
 CHUNK_SIZE = 10000
 MAX_TRAINING = 19000
+MAX_TESTING = 19000
 
 EMPTY_FEATURE_VECTOR = dict({'useful': [0, 0], 'funny': [0, 0], 'cool': [0, 0]})
 
@@ -55,7 +56,7 @@ class NaiveBayes(object):
 
         if self.args.train:
             self.train_classifier()
-            if self.args.pickle and os.path.exists(self.outFile):
+            if self.args.pickle:
                 self.save_model()
 
         else:
@@ -291,6 +292,12 @@ class NaiveBayes(object):
 
         # For each chunk of test data, categorize and compare results
         for chunk in df:
+
+            # Training early stop for faster testing
+            if test_total >= MAX_TESTING:
+                print("Exceeded maximum number of samples.")
+                break
+
             print('Testing with chunk of ' + str(chunk.shape[0]) + ' samples...')
             chunk_start = time.time()
 
@@ -319,67 +326,72 @@ class NaiveBayes(object):
                     test_null += 1
 
                 else:
+                    try:
+                        # Count word occurrences in line
+                        vectorizer = CountVectorizer(stop_words='english')
+                        vectorizer.fit([line['text']])
 
-                    # Count word occurrences in line
-                    vectorizer = CountVectorizer(analyzer='words', stop_words='english')
-                    vectorizer.fit([line['text']])
+                        # For each word in line, multiply line probability by word probability for the number of occurrences
+                        for word in vectorizer.vocabulary_:
 
-                    # For each word in line, multiply line probability by word probability for the number of occurrences
-                    for word in vectorizer.vocabulary_:
+                            # Find P (has word | category) for each category.
+                            word_prob = dict({
+                                1: self.p_has_word_category[word, 1],
+                                2: self.p_has_word_category[word, 2],
+                                3: self.p_has_word_category[word, 3],
+                                4: self.p_has_word_category[word, 4],
+                                5: self.p_has_word_category[word, 5]
+                            })
 
-                        # Find P (has word | category) for each category.
-                        word_prob = dict({
-                            1: self.p_has_word_category[word, 1],
-                            2: self.p_has_word_category[word, 2],
-                            3: self.p_has_word_category[word, 3],
-                            4: self.p_has_word_category[word, 4],
-                            5: self.p_has_word_category[word, 5]
-                        })
+                            # Check for zero probabilities, replace them with our small number instead
+                            for i in range(5):
+                                if word_prob[i + 1] == 0: word_prob[i + 1] = zero_prob
 
-                        # Check for zero probabilities, replace them with our small number instead
-                        for i in range(5):
-                            if word_prob[i + 1] == 0: word_prob[i + 1] = zero_prob
+                            # Multiply with word probability for occurrences of word
+                            for i in range(vectorizer.vocabulary_[word]):
+                                line_prob[1] = line_prob[1] * word_prob[1]
+                                line_prob[2] = line_prob[2] * word_prob[2]
+                                line_prob[3] = line_prob[3] * word_prob[3]
+                                line_prob[4] = line_prob[4] * word_prob[4]
+                                line_prob[5] = line_prob[5] * word_prob[5]
 
-                        # Multiply with word probability for occurrences of word
-                        for i in range(vectorizer.vocabulary_[word]):
-                            line_prob[1] = line_prob[1] * word_prob[1]
-                            line_prob[2] = line_prob[2] * word_prob[2]
-                            line_prob[3] = line_prob[3] * word_prob[3]
-                            line_prob[4] = line_prob[4] * word_prob[4]
-                            line_prob[5] = line_prob[5] * word_prob[5]
+                            # if feature regression, add word vector * occurrences
+                            if self.incFeatures:
+                                feat = self.get_feature_vector(word)
+                                line_useful += feat['useful'] * float(vectorizer.vocabulary_[word])
+                                line_funny += feat['funny'] * float(vectorizer.vocabulary_[word])
+                                line_cool += feat['cool'] * float(vectorizer.vocabulary_[word])
 
-                        # if feature regression, add word vector * occurrences
+                        # Find highest classification for line
+                        max = 0
+                        rating = 0
+                        for i in range(1, 6):
+                            if line_prob[i] > max:
+                                max = line_prob[i]
+                                rating = i
+
+                        if rating is line_rating_ac:
+                            test_correct += 1
+                        else:
+                            test_incorrect += 1
+
+                        # If features enabled, check regression error, add to totals.
                         if self.incFeatures:
-                            feat = self.get_feature_vector(word)
-                            line_useful += feat['useful'] * float(vectorizer.vocabulary_[word])
-                            line_funny += feat['funny'] * float(vectorizer.vocabulary_[word])
-                            line_cool += feat['cool'] * float(vectorizer.vocabulary_[word])
+                            residual_absolute = (abs(line_useful - line_useful_ac) + abs(line_funny - line_funny_ac)
+                                                 + abs(line_cool - line_cool_ac))
 
-                    # Find highest classification for line
-                    max = 0
-                    rating = 0
-                    for i in range(1, 6):
-                        if line_prob[i] > max:
-                            max = line_prob[i]
-                            rating = i
+                            residual_squared = numpy.square(residual_absolute)
 
-                    if rating is line_rating_ac:
-                        test_correct += 1
-                    else:
-                        test_incorrect += 1
+                            residual_absolute_total += residual_absolute
+                            residual_squared_total += residual_squared
 
-                    # If features enabled, check regression error, add to totals.
-                    if self.incFeatures:
-                        residual_absolute = (abs(line_useful - line_useful_ac) + abs(line_funny - line_funny_ac)
-                                             + abs(line_cool - line_cool_ac))
-
-                        residual_squared = numpy.square(residual_absolute)
-
-                        residual_absolute_total += residual_absolute
-                        residual_squared_total += residual_squared
+                    # Handling for text that is all stopwords, such as "a a a a a" or "x"
+                    except ValueError as e:
+                        test_null += 1
 
                 # Increment test total for completed line
                 test_total += 1
+
 
             chunk_time = time.time() - chunk_start
             print('Completed prediction on {} samples in {:.2f} sec.'.format(test_total, chunk_time))
