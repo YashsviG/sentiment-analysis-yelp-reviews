@@ -9,9 +9,9 @@ MAX_NUM_ENTRIES = 2000000
 DEFAULT_CHUNK_SIZE = 1000
 
 keys_to_remove = ["review_id", "business_id", "user_id", "date"]
-
 punctuation = "\"#$%&'()*+,-./:;<=>@[\\]^_`{|}~.\n"
 replacement_mapping = {"&": " and ", "/": " or ", "\\": " or ", "<": " lt ", ">": " gt "}
+
 
 
 # Remove punctuations from text
@@ -36,6 +36,7 @@ def load_raw_json(input_filename=DEFAULT_RAW_DATA_FILE):
     file.close()
 
 
+
 def split_data(output_file=DEFAULT_CLEANED_DATA_FILE):
     print(f"Output file is {output_file}")
     df = pd.read_json(output_file, lines=True, chunksize=DEFAULT_CHUNK_SIZE)
@@ -53,6 +54,7 @@ def split_data(output_file=DEFAULT_CLEANED_DATA_FILE):
             train_data, remaining_data = train_test_split(chunk, test_size=(1 - train_ratio))
             test_data, val_data = train_test_split(remaining_data, test_size=test_val_ratio)
 
+
             train_data.to_json("train_data.json", orient="records", lines=True, mode="a")
             test_data.to_json("test_data.json", orient="records", lines=True, mode="a")
             val_data.to_json("val_data.json", orient="records", lines=True, mode="a")
@@ -60,6 +62,7 @@ def split_data(output_file=DEFAULT_CLEANED_DATA_FILE):
             print("Processed total of " + str(i) + " entries.")
 
     print("Data split complete.")
+
 
 
 def main():
