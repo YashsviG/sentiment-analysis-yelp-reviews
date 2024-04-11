@@ -10,12 +10,12 @@ import numpy
 import pandas as pd
 from sklearn.feature_extraction.text import CountVectorizer
 
-DEFAULT_TEST_FILE = 'data/test_data.json'
+DEFAULT_TEST_FILE = 'data/val_data.json'
 DEFAULT_TRAIN_FILE = 'data/train_data.json'
 DEFAULT_MODEL_FILE = 'naive_bayes.pkl'
 CHUNK_SIZE = 10000
-MAX_TRAINING = 19000
-MAX_TESTING = 19000
+MAX_TRAINING = 500000
+MAX_TESTING = 1000000
 
 EMPTY_FEATURE_VECTOR = dict({'useful': [0, 0], 'funny': [0, 0], 'cool': [0, 0]})
 
@@ -28,7 +28,6 @@ DATA_FORMAT = {
     "text": str
 
 }
-
 
 # Main running class
 class NaiveBayes(object):
@@ -252,23 +251,24 @@ class NaiveBayes(object):
             print('Failed to save model to {}.\n{}'.format(self.modelFile, e))
             sys.exit(0)
 
-        print('Model saved.')
+        print('Model saved to {}.'.format(self.modelFile))
 
     def load_model(self):
-        print('Loading model...')
+        print('Loading model from {}...'.format(self.modelFile))
 
         try:
-            f = open(self.modelFile, 'wb')
+            f = open(self.modelFile, 'rb')
             model = pickle.load(f)
-            f.close()
             self.feature_vectors_dict = model.feature_vectors_dict
             self.p_has_word_category = model.p_has_word_category
             self.p_stars = model.p_stars
             self.total_samples = model.total_samples
             self.incFeatures = model.incFeatures
+            f.close()
 
         except IOError as e:
             print('Failed to load model from {}.\n{}'.format(self.modelFile, e))
+            f.close
             sys.exit(0)
 
         print('Model loaded.')
@@ -305,11 +305,11 @@ class NaiveBayes(object):
             for line_index, line in chunk.iterrows():
 
                 line_prob = dict({
-                    1: self.p_stars[1],
-                    2: self.p_stars[2],
-                    3: self.p_stars[3],
-                    4: self.p_stars[4],
-                    5: self.p_stars[5]
+                    1: float(self.p_stars[1])/float(self.total_samples),
+                    2: float(self.p_stars[2])/float(self.total_samples),
+                    3: float(self.p_stars[3])/float(self.total_samples),
+                    4: float(self.p_stars[4])/float(self.total_samples),
+                    5: float(self.p_stars[5])/float(self.total_samples),
                 })
 
                 line_rating_ac = int(line['stars'])
@@ -345,30 +345,25 @@ class NaiveBayes(object):
 
                             # Check for zero probabilities, replace them with our small number instead
                             for i in range(5):
-                                if word_prob[i + 1] == 0: word_prob[i + 1] = zero_prob
+                                if word_prob[i + 1] == 0:
+                                    word_prob[i + 1] = zero_prob
 
-                            # Multiply with word probability for occurrences of word
-                            for i in range(vectorizer.vocabulary_[word]):
-                                line_prob[1] = line_prob[1] * word_prob[1]
-                                line_prob[2] = line_prob[2] * word_prob[2]
-                                line_prob[3] = line_prob[3] * word_prob[3]
-                                line_prob[4] = line_prob[4] * word_prob[4]
-                                line_prob[5] = line_prob[5] * word_prob[5]
+                            # Add word probability for number of occurrences of word
+                            line_prob[1] += word_prob[1] * vectorizer.vocabulary_[word]
+                            line_prob[2] += word_prob[2] * vectorizer.vocabulary_[word]
+                            line_prob[3] += word_prob[3] * vectorizer.vocabulary_[word]
+                            line_prob[4] += word_prob[4] * vectorizer.vocabulary_[word]
+                            line_prob[5] += word_prob[5] * vectorizer.vocabulary_[word]
 
-                            # if feature regression, add word vector * occurrences
+                            # if feature regression, add word vector
                             if self.incFeatures:
                                 feat = self.get_feature_vector(word)
-                                line_useful += feat['useful'] * float(vectorizer.vocabulary_[word])
-                                line_funny += feat['funny'] * float(vectorizer.vocabulary_[word])
-                                line_cool += feat['cool'] * float(vectorizer.vocabulary_[word])
+                                line_useful += feat['useful']
+                                line_funny += feat['funny']
+                                line_cool += feat['cool']
 
-                        # Find highest classification for line
-                        max = 0
-                        rating = 0
-                        for i in range(1, 6):
-                            if line_prob[i] > max:
-                                max = line_prob[i]
-                                rating = i
+                        # Find highest prob classification for line
+                        rating = max(line_prob, key=line_prob.get)
 
                         if rating is line_rating_ac:
                             test_correct += 1
@@ -392,7 +387,6 @@ class NaiveBayes(object):
                 # Increment test total for completed line
                 test_total += 1
 
-
             chunk_time = time.time() - chunk_start
             print('Completed prediction on {} samples in {:.2f} sec.'.format(test_total, chunk_time))
 
@@ -406,8 +400,8 @@ class NaiveBayes(object):
         print('Rating Accuracy:     {:.2f} %'.format(accuracy))
 
         if self.incFeatures:
-            print('Feature MAE:         {:.4f}', format(round(residual_absolute_total / test_total)))
-            print('Feature MSE:         {:.4f}', format(round(residual_squared_total / test_total)))
+            print('Feature MAE:         {:.4f}'.format(residual_absolute_total / test_total))
+            print('Feature RMSE:        {:.4f}'.format(numpy.sqrt(residual_squared_total / test_total)))
 
 
 def main():
@@ -415,4 +409,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main()1
