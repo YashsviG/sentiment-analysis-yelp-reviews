@@ -1,3 +1,5 @@
+json
+sklearn
 torchtext
 torch
 transformers
@@ -5,3 +7,4 @@ tqdm
 numpy
 pandas~=2.2.1
 scikit-learn~=1.4.1.post1
+sklearnex
