@@ -53,7 +53,6 @@ class ProbDist:
                           for (v, p) in sorted(self.prob.items())])
 
     def __repr__(self):
-        """Return a printable version of the distribution."""
         return "P({})".format(self.varname)
 
 
@@ -80,7 +79,6 @@ class JointProbDist(ProbDist):
     0.5"""
 
     def __init__(self, variables):
-        super().__init__()
         self.prob = {}
         self.variables = variables
         self.vals = defaultdict(list)
@@ -112,5 +110,4 @@ class JointProbDist(ProbDist):
         raise NotImplementedError
 
     def __repr__(self):
-        """Return a printable representation of the distribution."""
         return "P({})".format(self.variables)
