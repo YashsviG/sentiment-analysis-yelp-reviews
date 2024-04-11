@@ -1,22 +1,15 @@
 import numpy
-import sklearn.feature_extraction.text
 
 import ProbDist
-import dataPrep
 
 import argparse
 import os
 import sys
-import numpy as np
 import pandas as pd
-import itertools
 from sklearn.feature_extraction.text import CountVectorizer
 
-import pickle
-from sklearn.feature_extraction.text import TfidfVectorizer
-
-DEFAULT_TEST_FILE = '../data/test_data.json'
-DEFAULT_TRAIN_FILE = '../data/train_data.json'
+DEFAULT_TEST_FILE = 'data/test_data.json'
+DEFAULT_TRAIN_FILE = 'data/train_data.json'
 DEFAULT_MODEL_FILE = 'naive_bayes.pkl'
 CHUNK_SIZE = 1000
 
@@ -41,18 +34,18 @@ class NaiveBayes(object):
     modelFile = DEFAULT_MODEL_FILE
     outFile = DEFAULT_MODEL_FILE
     incFeatures = False
-    args: argparse.Namespace
+    args: argparse.Namespace = None
 
     total_samples = 0
 
     # Probability distributions for prediction
     p_has_word_category: ProbDist.JointProbDist
     p_stars: ProbDist.ProbDist
+    feature_vectors_dict: dict[str: dict[str: [float, int]]]
 
     # feature_vectors_dict is a Dictionary of Words used and the total amount of FEATURE they provided to each review
     # followed by the amount of times they contributed. We use this to find the average contribution towards a number
     # of features each word provides, and use this for regression.
-    feature_vectors_dict: dict[str: dict[str: [float, int]]]
 
     def __init__(self):
         self.args = self.parse_args()
@@ -140,6 +133,10 @@ class NaiveBayes(object):
                                                 5: 1})  # Default freq set to 1 to avoid zero inputs
         self.p_has_word_category = ProbDist.JointProbDist(['hasWord', 'stars'])
 
+        self.feature_vectors_dict: dict[str: dict[str: [float, int]]] = dict(
+            {'a': EMPTY_FEATURE_VECTOR, 'this': EMPTY_FEATURE_VECTOR, }
+        )
+
         df = pd.read_json(self.trainFile, lines=True, chunksize=CHUNK_SIZE)
 
         # For each chunk pandas reads from file, handle lines
@@ -157,17 +154,17 @@ class NaiveBayes(object):
                 lineCool = float(line.get('cool', 0))
 
                 # Verify line is properly formed
-                if lineStars and line['text'] and line['text'].strip() is not '':
+                if lineStars and line['text'] and line['text'].strip() != '':
                     self.p_stars[lineStars] += 1
 
-                    vectorizer = CountVectorizer(analyzer='words', stop_words='english')
-                    vectorizer.fit(line['text'])
+                    vectorizer = CountVectorizer(stop_words='english')
+                    vectorizer.fit([line['text']])
 
                     total_words = float(sum(vectorizer.vocabulary_.values()))
 
                     # Handle word probabilities within line
-                    for word, val in vectorizer.vocabulary_:
-                        self.p_has_word_category[word, lineStars] += val
+                    for word in vectorizer.vocabulary_:
+                        self.p_has_word_category[word, lineStars] += vectorizer.vocabulary_[word]
 
                     # if we're doing feature regression, add feature contributions to words feature vector in dict.
                     if self.incFeatures:
@@ -179,15 +176,15 @@ class NaiveBayes(object):
                             # Add word component strengths to vector components, increment occurrences.
                             if lineUseful > 0:
                                 self.feature_vectors_dict[word]['useful'][0] += lineUseful * vectorizer.vocabulary_[
-                                    word] / total_words
+                                    word] / max(total_words, 1.0)
                                 self.feature_vectors_dict[word]['useful'][1] += vectorizer.vocabulary_[word]
                             if lineFunny > 0:
                                 self.feature_vectors_dict[word]['funny'][0] += lineFunny * vectorizer.vocabulary_[
-                                    word] / total_words
+                                    word] / max(total_words, 1.0)
                                 self.feature_vectors_dict[word]['funny'][1] += vectorizer.vocabulary_[word]
                             if lineCool > 0:
                                 self.feature_vectors_dict[word]['cool'][0] += lineCool * vectorizer.vocabulary_[
-                                    word] / total_words
+                                    word] / max(total_words, 1.0)
                                 self.feature_vectors_dict[word]['cool'][1] += vectorizer.vocabulary_[word]
 
                 # Else handle misshapen lines
@@ -264,7 +261,7 @@ class NaiveBayes(object):
 
                     # Count word occurrences in line
                     vectorizer = CountVectorizer(analyzer='words', stop_words='english')
-                    vectorizer.fit(line['text'])
+                    vectorizer.fit([line['text']])
 
                     # For each word in line, multiply probability by word probability for the number of occurrences of word
                     for word in vectorizer.vocabulary_:
@@ -300,7 +297,7 @@ class NaiveBayes(object):
                     # Find highest classification for line
                     max = 0
                     rating = 0
-                    for i in range(1,6):
+                    for i in range(1, 6):
                         if line_prob[i] > max:
                             max = line_prob[i]
                             rating = i
@@ -322,6 +319,7 @@ class NaiveBayes(object):
 
                 # Increment test total for completed line
                 test_total += 1
+
 
 def main():
     NaiveBayes()
