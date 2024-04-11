@@ -14,6 +14,7 @@ DEFAULT_TEST_FILE = 'data/test_data.json'
 DEFAULT_TRAIN_FILE = 'data/train_data.json'
 DEFAULT_MODEL_FILE = 'naive_bayes.pkl'
 CHUNK_SIZE = 10000
+MAX_TRAINING = 19000
 
 EMPTY_FEATURE_VECTOR = dict({'useful': [0, 0], 'funny': [0, 0], 'cool': [0, 0]})
 
@@ -134,6 +135,8 @@ class NaiveBayes(object):
         total_null_samples = 0
         total_samples = 0
 
+        word_totals = dict({1: 0, 2: 0, 3: 0, 4: 0, 5: 0})
+
         self.p_stars = ProbDist.ProbDist('stars',
                                          freqs={1: 1, 2: 1, 3: 1, 4: 1, 5: 1})  # Default set to 1 to avoid zero inputs
         self.p_has_word_category = ProbDist.JointProbDist(['hasWord', 'stars'])
@@ -146,7 +149,14 @@ class NaiveBayes(object):
 
         # For each chunk pandas reads from file, handle lines
         for chunk in df:
+
+            # Training early stop for faster testing
+            if total_samples >= MAX_TRAINING:
+                print("Exceeded maximum number of samples.")
+                break
+
             print('Training with chunk of ' + str(chunk.shape[0]) + ' samples...')
+
             null_samples = 0
             start = time.time()
 
@@ -172,6 +182,7 @@ class NaiveBayes(object):
                         # Handle word probabilities within line
                         for word in vectorizer.vocabulary_:
                             self.p_has_word_category[word, lineStars] += vectorizer.vocabulary_[word]
+                            word_totals[lineStars] += vectorizer.vocabulary_[word]
 
                         # if we're doing feature regression, add feature contributions to words feature vector in dict.
                         if self.incFeatures:
