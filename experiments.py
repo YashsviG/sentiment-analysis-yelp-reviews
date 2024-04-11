@@ -1,8 +1,10 @@
+from collections import Counter
+
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.model_selection import GridSearchCV
 from sklearn.svm import SVC
-from collections import Counter
-from sklearn.metrics import classification_report, confusion_matrix
+
 
 def remove_top_words(X_train, X_test, k):
     # Count the frequency of each word in the training set
@@ -10,14 +12,22 @@ def remove_top_words(X_train, X_test, k):
     # Get the top k most frequent words
     top_words = [word for word, _ in word_counter.most_common(k)]
     # Remove the top k most frequent words from the text reviews
-    X_train_filtered = [" ".join([word for word in review.split() if word not in top_words]) for review in X_train]
-    X_test_filtered = [" ".join([word for word in review.split() if word not in top_words]) for review in X_test]
+    X_train_filtered = [
+        " ".join([word for word in review.split() if word not in top_words])
+        for review in X_train
+    ]
+    X_test_filtered = [
+        " ".join([word for word in review.split() if word not in top_words])
+        for review in X_test
+    ]
     return X_train_filtered, X_test_filtered
+
 
 def experiment_remove_top_words(X_train, X_test, Y_train, Y_test, k):
     # Remove the top k most frequent words
     X_train_filtered, X_test_filtered = remove_top_words(X_train, X_test, k)
     return X_train_filtered, X_test_filtered
+
 
 def experiment_ngrams(X_train, X_test, Y_train, Y_test):
     count_vectorizer = CountVectorizer(ngram_range=(1, 2))  # Try bi-grams
@@ -54,4 +64,11 @@ def experiment_class_imbalance_handling(X_train, X_test, Y_train, Y_test):
     svm_logistic = grid_search.best_estimator_
     return svm_logistic
 
-__all__ = [experiment_remove_top_words, experiment_ngrams, experiment_kernel_optimization, experiment_tfidf_vs_count, experiment_class_imbalance_handling]
+
+__all__ = [
+    experiment_remove_top_words,
+    experiment_ngrams,
+    experiment_kernel_optimization,
+    experiment_tfidf_vs_count,
+    experiment_class_imbalance_handling,
+]
