@@ -8,22 +8,26 @@ from multiprocess import Pool
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split
-from sklearn.pipeline import Pipeline
 from sklearn.svm import SVC
-from sklearn.tree import DecisionTreeClassifier
 from sklearnex import patch_sklearn
 
-from experiments import (experiment_class_imbalance_handling,
-                         experiment_kernel_optimization, experiment_ngrams,
-                         experiment_remove_top_words,
-                         experiment_tfidf_vs_count)
+from experiments import (
+    experiment_kernel_optimization,
+    experiment_ngrams,
+)
 
 patch_sklearn()
 import numpy as np
 from sklearn.metrics import mean_squared_error
 
-training_file = "./data/25k_data.json"
-test_file = "./data/test_data2.json"
+TRAIN_FILE = "./data/train_data.json"
+TEST_FILE = "./data/test_data.json"
+
+
+def load_model(file_path):
+    with open(file_path, "rb") as file:
+        model = pickle.load(file)
+    return model
 
 
 def save_model(model, filename):
@@ -76,7 +80,7 @@ def train_svm(X_train_counts, y_train):
     return svm_stars
 
 
-def stars(experiment1=False, experiment2=False):
+def stars(experiment1=False, experiment2=False, training_file=TRAIN_FILE, test_file=TEST_FILE):
     training_data = preprocess_text_data(training_file, task="classify")
     test_data = preprocess_text_data(test_file, task="classify")
 
@@ -116,11 +120,10 @@ def stars(experiment1=False, experiment2=False):
     print(svm_class_report)
     print(svm_confusion_matrix)
 
-    # Save the trained model
-    save_model(svm_stars, "./model/svm_stars_model.pkl")
+    save_model(svm_stars, "./svm_stars_model.pkl")
 
 
-def funny_cool_useful(experiment1=True):
+def funny_cool_useful(experiment1=True, training_file=TRAIN_FILE, test_file=TEST_FILE):
     features = ["cool", "funny", "useful"]
     for target in features:
         training_data = preprocess_text_data(training_file, task="regression")
@@ -150,9 +153,25 @@ def funny_cool_useful(experiment1=True):
         print(f"=============== {target} with SVM Regression ==================")
         print(rmse)
 
-        # Save the trained model
-        save_model(svm_logistic, f"./model/{target}_svm_model.pkl")
+        save_model(svm_logistic, f"./{target}_svm_model.pkl")
 
+def use_train_model(test_data, target, filename):
+    with open(filename, 'rb') as file:
+        loaded_model = pickle.load(file)
+        print(f"Model loaded from {filename}")
+
+        df = pd.read_json(test_data, lines=True)[["stars", "text"]]
+        df_sampled = df.sample()
+        X = df_sampled['text']
+        y = df_sampled[target]
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.5)
+
+        predictions = loaded_model.predict(X_test)
+
+        if (target == 'stars'):
+            print("Classification report:\n", classification_report(y_test, predictions))
+        else:
+            print("R2 score:\n", np.sqrt(y_test, predictions))
 
 def main():
     parser = argparse.ArgumentParser(description="Run sentiment analysis functions.")
