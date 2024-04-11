@@ -1,13 +1,13 @@
-import numpy
-
 import ProbDist
 
 import argparse
 import os
 import sys
-import pandas as pd
 import time
 import datetime
+import pickle
+import numpy
+import pandas as pd
 from sklearn.feature_extraction.text import CountVectorizer
 
 DEFAULT_TEST_FILE = 'data/test_data.json'
@@ -54,6 +54,9 @@ class NaiveBayes(object):
 
         if self.args.train:
             self.train_classifier()
+            if self.args.pickle and os.path.exists(self.outFile):
+                self.save_model()
+
         else:
             self.load_model()
 
@@ -226,10 +229,37 @@ class NaiveBayes(object):
         print('Normalization completed in {}.'.format(normal_time))
         print('Done Training.')
 
+    def save_model(self):
+        print('Saving model...')
+
+        try:
+            f = open(self.modelFile, 'wb')
+            pickle.dump(self, f)
+            f.close()
+        except IOError as e:
+            print('Failed to save model to {}.\n{}'.format(self.modelFile, e))
+            sys.exit(0)
+
+        print('Model saved.')
+
     def load_model(self):
-        print('THIS IS NOT IMPLEMENTED YET, ABORTING')
-        sys.exit(0)
-        # TODO load pickle file here
+        print('Loading model...')
+
+        try:
+            f = open(self.modelFile, 'wb')
+            model = pickle.load(f)
+            f.close()
+            self.feature_vectors_dict = model.feature_vectors_dict
+            self.p_has_word_category = model.p_has_word_category
+            self.p_stars = model.p_stars
+            self.total_samples = model.total_samples
+            self.incFeatures = model.incFeatures
+
+        except IOError as e:
+            print('Failed to load model from {}.\n{}'.format(self.modelFile, e))
+            sys.exit(0)
+
+        print('Model loaded.')
 
     def run_test(self):
 
@@ -283,7 +313,7 @@ class NaiveBayes(object):
                     vectorizer = CountVectorizer(analyzer='words', stop_words='english')
                     vectorizer.fit([line['text']])
 
-                    # For each word in line, multiply probability by word probability for the number of occurrences of word
+                    # For each word in line, multiply line probability by word probability for the number of occurrences
                     for word in vectorizer.vocabulary_:
 
                         # Find P (has word | category) for each category.
