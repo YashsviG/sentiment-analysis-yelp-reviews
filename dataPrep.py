@@ -1,8 +1,8 @@
 import argparse
 import json
-
 import pandas as pd
 from sklearn.model_selection import train_test_split
+
 
 DEFAULT_RAW_DATA_FILE = "./data/yelp_academic_dataset_review.json"
 DEFAULT_CLEANED_DATA_FILE = "./data/cleaned_data.json"
@@ -11,6 +11,7 @@ DEFAULT_CHUNK_SIZE = 1000
 
 keys_to_remove = ["review_id", "business_id", "user_id", "date"]
 punctuation = "\"#$%&'()*+,-./:;<=>@[\\]^_`{|}~.\n"
+
 replacement_mapping = {
     "&": " and ",
     "/": " or ",
@@ -18,6 +19,7 @@ replacement_mapping = {
     "<": " lt ",
     ">": " gt ",
 }
+
 
 
 # Remove punctuations from text
@@ -34,6 +36,7 @@ def load_raw_json(input_filename=DEFAULT_RAW_DATA_FILE):
     with open(input_filename, "r") as file, open(
         DEFAULT_CLEANED_DATA_FILE, "a+"
     ) as output_file:
+
         for line in file:
             data = json.loads(line)
             for key in keys_to_remove:
@@ -42,6 +45,7 @@ def load_raw_json(input_filename=DEFAULT_RAW_DATA_FILE):
             output_file.write(json.dumps(data, ensure_ascii=False) + "\n")
         output_file.close()
     file.close()
+
 
 
 def split_data(output_file=DEFAULT_CLEANED_DATA_FILE):
@@ -54,7 +58,6 @@ def split_data(output_file=DEFAULT_CLEANED_DATA_FILE):
     val_ratio = 0.10
     test_val_ratio = test_ratio / (test_ratio + val_ratio)
     i = 0
-
     while i < MAX_NUM_ENTRIES:
         for chunk in df:
             print("Splitting chunk of size " + str(len(chunk)) + "...")
