@@ -5,57 +5,128 @@ import os
 import sys
 import time
 import datetime
-import pickle
+import dill as pickle
+# import pickle
 import numpy
 import pandas as pd
 from sklearn.feature_extraction.text import CountVectorizer
 
 DEFAULT_TEST_FILE = 'data/val_data.json'
 DEFAULT_TRAIN_FILE = 'data/train_data.json'
-DEFAULT_MODEL_FILE = 'naive_bayes.pkl'
-CHUNK_SIZE = 10000
-MAX_TRAINING = 500000
-MAX_TESTING = 1000000
+DEFAULT_MODEL_FILE = 'pickled-models/naive_bayes.pkl'
+TRAINING_CHUNK_SIZE = 10000  # will always train on at least one full chunk
+MAX_TRAINING = 100000
+TESTING_CHUNK_SIZE = 100000  # will always test on at least one full chunk
+MAX_TESTING = 300000
 
+USE_CUSTOM_NORMALIZER = True
+
+# Empty versions of feature vector for creating new entries in the dictionary.
+# Probably not easier than just making a new class for it.
 EMPTY_FEATURE_VECTOR = dict({'useful': [0, 0], 'funny': [0, 0], 'cool': [0, 0]})
 
+# Data format for dataframes given by pandas. Used for handling dataframes.
 DATA_FORMAT = {
-
     "stars": [1, 2, 3, 4, 5],
     "useful": int,
     "funny": int,
     "cool": int,
     "text": str
-
 }
+
+def parse_args( parser: argparse.ArgumentParser):
+    """Custom Argument parser for handling construction of the class without inputs. Includes basic validation."""
+    parser.add_argument('--train', action='store_true', default=False,
+                        help='Training flag, sets the script to train a model')
+    parser.add_argument('--pickle', action='store_true', required=False,
+                        help='Pickle flag, sets the script to create a pickle file')
+    parser.add_argument('--noFeatures', action='store_false', required=False,
+                        help='Features flag, sets model to include feature vector calculation in training and '
+                             'prediction', default=True)
+    parser.add_argument('--training_file', type=str, default=DEFAULT_TRAIN_FILE,
+                        help='location of training json file, required if training')
+    parser.add_argument('--test_file', required=True, type=str, default=DEFAULT_TEST_FILE,
+                        help='location testing json file, required')
+    parser.add_argument('--trained_model', type=str, default=DEFAULT_MODEL_FILE,
+                        help='location of model pickle file, required if not training.')
+    parser.add_argument('--out_file', type=str, default=DEFAULT_MODEL_FILE,
+                        help='Location to save output pickle file')
+
+    args = parser.parse_args()
+
+    # Testing file validation
+    if args.test_file and not os.path.isfile(args.test_file):
+        print('Testing data file not found at ' + args.test_file + ' A testing data file is required.')
+        sys.exit(0)
+
+    # Training mode file validation
+    if args.train:
+        if not args.training_file:
+            print('Training File required for training model.')
+            sys.exit(0)
+
+        if args.training_file and not os.path.isfile(args.training_file):
+            print('Training data file not found at ' + args.training_File)
+            sys.exit(0)
+
+    # PreMade model file validation
+    else:
+        if args.trained_model and not os.path.isfile(args.trained_model):
+            print('Model pickle file not found at ' + args.trained_model)
+            sys.exit(0)
+
+    return args
+
 
 # Main running class
 class NaiveBayes(object):
-    # Control Variables
+    feature_vectors_dict = None
+    p_has_word_category = None
+    p_stars = None
     testFile = DEFAULT_TEST_FILE
     trainFile = DEFAULT_TRAIN_FILE
     modelFile = DEFAULT_MODEL_FILE
     outFile = DEFAULT_MODEL_FILE
-    incFeatures = False
-    args: argparse.Namespace = None
-
+    custom_args = False
+    run_training = False
+    run_pickle = True
+    incFeatures = True
+    args: argparse.Namespace
     total_samples = 0
 
-    # Probability distributions for prediction
-    p_has_word_category: ProbDist.JointProbDist
-    p_stars: ProbDist.ProbDist
-    feature_vectors_dict: dict[str: dict[str: [float, int]]]
+    def __init__(self, input_args: argparse.Namespace, custom_args=False):
+        """Constructor for Naive Bayes classifier. Takes input arguments from an argeParser, assumes arguments are
+        valid. If calling with your own argParser, make sure custom_args is set to True."""
+        # Control Variables
+        self.feature_vectors_dict = None
+        self.p_has_word_category = None
+        self.p_stars = None
+        self.testFile = DEFAULT_TEST_FILE
+        self.trainFile = DEFAULT_TRAIN_FILE
+        self.modelFile = DEFAULT_MODEL_FILE
+        self.outFile = DEFAULT_MODEL_FILE
+        self.custom_args = custom_args
+        self.run_training = False
+        self.run_pickle = True
+        self.incFeatures = True
+        self.args: argparse.Namespace
+        self.total_samples = 0
 
-    # feature_vectors_dict is a Dictionary of Words used and the total amount of FEATURE they provided to each review
-    # followed by the amount of times they contributed. We use this to find the average contribution towards a number
-    # of features each word provides, and use this for regression.
+        # Probability distributions for prediction
+        self.p_has_word_category: ProbDist.JointProbDist = None
+        self.p_stars: ProbDist.ProbDist
+        self.feature_vectors_dict: dict[str: dict[str: [float, int]]]
+        # feature_vectors_dict is a Dictionary of Words used and the total amount of FEATURE they provided to each
+        # review followed by the amount of times they contributed. We use this to find the average contribution
+        # towards a number of features each word provides, and use this for regression. Why did I do this instead of
+        # using another ProbDist? who knows.
 
-    def __init__(self):
-        self.args = self.parse_args()
+        self.args = input_args
+        self.handle_args()
 
-        if self.args.train:
+        if self.run_training:
             self.train_classifier()
-            if self.args.pickle:
+            if self.run_pickle:
                 self.save_model()
 
         else:
@@ -63,53 +134,34 @@ class NaiveBayes(object):
 
         self.run_test()
 
-    def parse_args(self):
-        parser = argparse.ArgumentParser(description='Probabalistic classifier')
+    def handle_args(self):
+        """Function to handle custom arguments being passed to the class from an argeParser. Assumes arguments are
+        valid and correctly labeled."""
 
-        parser.add_argument('--train', action='store_true', required=False,
-                            help='Training flag, sets the script to train a model')
-        parser.add_argument('--pickle', action='store_true', required=False,
-                            help='Pickle flag, sets the script to create a pickle file')
-        parser.add_argument('--features', action='store_true', required=False,
-                            help='Features flag, sets model to include feature vector calculation in training and '
-                                 'prediction', default=False)
-        parser.add_argument('--trainFile', type=str, default=DEFAULT_TRAIN_FILE,
-                            help='location of training json file, required if training')
-        parser.add_argument('--testFile', required=True, type=str, default=DEFAULT_TEST_FILE,
-                            help='location testing json file, required')
-        parser.add_argument('--modelFile', type=str, default=DEFAULT_MODEL_FILE,
-                            help='location of model pickle file, required if not training.')
-        parser.add_argument('--outputFile', type=str, default=DEFAULT_MODEL_FILE,
-                            help='Location to save output pickle file')
+        # If handling passed args
+        if self.custom_args:
+            self.incFeatures = True
 
-        args = parser.parse_args()
+            if self.args.training_file:
+                self.run_training = True
 
-        # Training mode file validation
-        if args.train:
-            if args.trainFile and not os.path.exists(args.trainFile):
-                print('Training data file not found at ' + args.trainFile)
-                sys.exit(0)
-            else:
-                self.trainFile = args.trainFile
-
-            if args.testFile and not os.path.exists(args.testFile):
-                print('Testing data file not found at ' + args.testFile + ' A testing data file is required.')
-                sys.exit(0)
-            else:
-                self.testFile = args.testFile
-
-        # PreMade model file validation
+        # if handling in file args
         else:
-            if args.modelFile and not os.path.exists(args.modelFile):
-                print('Model pickle file not found at ' + args.modelFile)
-                sys.exit(0)
-            else:
-                self.modelFile = args.modelFile
+            self.run_training = self.args.train
 
-        self.incFeatures = args.features
-        return args
+            if self.args.noFeatures:
+                self.incFeatures = True
+            else:
+                self.incFeatures = False
+
+        self.run_pickle = self.args.pickle
+        self.trainFile = self.args.training_file
+        self.testFile = self.args.test_file
+        self.outFile = self.args.out_file
 
     def get_feature_vector(self, word: str):
+        """Function to get a Feature vector (Dictionary) for a particular word. Returns a zero vector if the word is
+        not in dictionary."""
         entry: [float, int] = self.feature_vectors_dict.get(word)
         usefulNorm = 0.0
         funnyNorm = 0.0
@@ -129,9 +181,12 @@ class NaiveBayes(object):
         })
 
     def train_classifier(self):
+        """Function to run training procedures for the Naive Bayes classifier. Overwrites any existing probability
+        data. Takes no inputs, relies on stored class variables. Loads data from location given in self.trainFile."""
         print('Training classifier...')
-        train_start = datetime.datetime.now()
 
+        # INITIALIZATION
+        train_start = datetime.datetime.now()
         total_null_samples = 0
         total_samples = 0
 
@@ -141,17 +196,19 @@ class NaiveBayes(object):
                                          freqs={1: 1, 2: 1, 3: 1, 4: 1, 5: 1})  # Default set to 1 to avoid zero inputs
         self.p_has_word_category = ProbDist.JointProbDist(['hasWord', 'stars'])
 
+        # Workaround for bugs with inserting into empty dictionary, used most common words.
         self.feature_vectors_dict: dict[str: dict[str: [float, int]]] = dict(
-            {'a': EMPTY_FEATURE_VECTOR, 'this': EMPTY_FEATURE_VECTOR, }
+            {'the': EMPTY_FEATURE_VECTOR, 'be': EMPTY_FEATURE_VECTOR, }
         )
 
-        df = pd.read_json(self.trainFile, lines=True, chunksize=CHUNK_SIZE)
+        # BUILDING WORD FREQUENCIES
+        df = pd.read_json(self.trainFile, lines=True, chunksize=TRAINING_CHUNK_SIZE)
 
         # For each chunk pandas reads from file, handle lines
         for chunk in df:
 
-            # Training early stop for faster testing
-            if total_samples >= MAX_TRAINING:
+            # Training early stop for faster testing, edit number at top of file.
+            if (total_samples >= MAX_TRAINING) and (MAX_TRAINING != 0):
                 print("Exceeded maximum number of samples.")
                 break
 
@@ -173,7 +230,7 @@ class NaiveBayes(object):
                 if lineStars and line['text'] and line['text'].strip() != '':
                     self.p_stars[lineStars] += 1
 
-                    vectorizer = CountVectorizer(stop_words='english')
+                    vectorizer = CountVectorizer(analyzer='word', stop_words='english')
                     try:
                         vectorizer.fit([line['text']])
 
@@ -222,25 +279,36 @@ class NaiveBayes(object):
             print('Completed chunk up to {} in {:.2f} sec. \nFound {} null entries in chunk'
                   .format(total_samples, time_taken, total_null_samples))
 
+        # NORMALIZATION OF PROBABILITIES
+
         train_time = datetime.datetime.now() - train_start
 
         print('Completed training on {} items in {}.'.format(total_samples, train_time))
         print('Normalizing probability matrix...')
+        normal_start = datetime.datetime.now()
 
-        Normal_start = datetime.datetime.now()
+        # CUSTOM REDUCING NORMALIZER
+        if USE_CUSTOM_NORMALIZER:
+            for rating in self.p_has_word_category.values('stars'):
+                for word in self.p_has_word_category.values('hasWord'):
+                    self.p_has_word_category[word, rating] = self.p_has_word_category[word, rating] / float(
+                        word_totals[rating])
 
-        # Iterate over ratings and normalize probabilities.
-        for rating in self.p_has_word_category.values('stars'):
-            full_count = sum(
-                (self.p_has_word_category[word, rating] for word in self.p_has_word_category.values('hasWord')))
-            for word in self.p_has_word_category.values('hasWord'):
-                self.p_has_word_category[word, rating] = self.p_has_word_category[word, rating] / float(full_count)
+        # LAB NAIVE BAYES NORMALIZER
+        else:
+            # Iterate over ratings and normalize probabilities.
+            for rating in self.p_has_word_category.values('stars'):
+                full_count = sum(
+                    (self.p_has_word_category[word, rating] for word in self.p_has_word_category.values('hasWord')))
+                for word in self.p_has_word_category.values('hasWord'):
+                    self.p_has_word_category[word, rating] = self.p_has_word_category[word, rating] / float(full_count)
 
-        normal_time = datetime.datetime.now() - Normal_start
+        normal_time = datetime.datetime.now() - normal_start
         print('Normalization completed in {}.'.format(normal_time))
         print('Done Training.')
 
     def save_model(self):
+        """Funtion to save the currently loaded model as a pickle file. Saves to location in self.outputFile"""
         print('Saving model...')
 
         try:
@@ -254,11 +322,22 @@ class NaiveBayes(object):
         print('Model saved to {}.'.format(self.modelFile))
 
     def load_model(self):
+        """Function to load a pickle file as model. Loads from location in self.modelFile. Will attempt to load any
+        pickle file as the model. Loading unrecognized models will cause the program to fail."""
         print('Loading model from {}...'.format(self.modelFile))
 
         try:
             f = open(self.modelFile, 'rb')
             model = pickle.load(f)
+
+            """ # bugs out running from parent file, but not this file... what?
+            if not isinstance(model, NaiveBayes):
+                print('Failed to load model as Naive Bayes Classifier. File may be malformed, or not created by '
+                      'NaiveBayes.save_model().')
+                print('Program terminated.')
+                sys.exit(0)
+            """
+
             self.feature_vectors_dict = model.feature_vectors_dict
             self.p_has_word_category = model.p_has_word_category
             self.p_stars = model.p_stars
@@ -268,19 +347,25 @@ class NaiveBayes(object):
 
         except IOError as e:
             print('Failed to load model from {}.\n{}'.format(self.modelFile, e))
-            f.close
+            f.close()
             sys.exit(0)
 
         print('Model loaded.')
 
     def run_test(self):
+        """Function to test loaded model against test data. Uses model loaded into memory and test data from
+        self.inputFile. Prints results to console directly."""
 
         test_total = 0
         test_correct = 0
         test_incorrect = 0
         test_null = 0
-        residual_absolute_total = 0
-        residual_squared_total = 0
+        useful_residual_absolute_total = 0
+        useful_residual_squared_total = 0
+        funny_residual_absolute_total = 0
+        funny_residual_squared_total = 0
+        cool_residual_absolute_total = 0
+        cool_residual_squared_total = 0
 
         zero_prob = 1.0 / float(self.total_samples)
 
@@ -288,7 +373,7 @@ class NaiveBayes(object):
         test_start = datetime.datetime.now()
 
         # Load chunk from testfile with pandas
-        df = pd.read_json(self.testFile, lines=True, chunksize=CHUNK_SIZE)
+        df = pd.read_json(self.testFile, lines=True, chunksize=TESTING_CHUNK_SIZE)
 
         # For each chunk of test data, categorize and compare results
         for chunk in df:
@@ -304,12 +389,13 @@ class NaiveBayes(object):
             # For Each line in chunk, run classification and regression
             for line_index, line in chunk.iterrows():
 
+                # should've normalized this as part of the model, but I already pickled and don't want to retrain.
                 line_prob = dict({
-                    1: float(self.p_stars[1])/float(self.total_samples),
-                    2: float(self.p_stars[2])/float(self.total_samples),
-                    3: float(self.p_stars[3])/float(self.total_samples),
-                    4: float(self.p_stars[4])/float(self.total_samples),
-                    5: float(self.p_stars[5])/float(self.total_samples),
+                    1: float(self.p_stars[1]) / float(self.total_samples),
+                    2: float(self.p_stars[2]) / float(self.total_samples),
+                    3: float(self.p_stars[3]) / float(self.total_samples),
+                    4: float(self.p_stars[4]) / float(self.total_samples),
+                    5: float(self.p_stars[5]) / float(self.total_samples),
                 })
 
                 line_rating_ac = int(line['stars'])
@@ -328,43 +414,36 @@ class NaiveBayes(object):
                 else:
                     try:
                         # Count word occurrences in line
-                        vectorizer = CountVectorizer(stop_words='english')
+                        vectorizer = CountVectorizer(analyzer='word', stop_words='english')  #
                         vectorizer.fit([line['text']])
 
-                        # For each word in line, multiply line probability by word probability for the number of occurrences
+                        # For each word in line, add line probability for the number of occurrences
                         for word in vectorizer.vocabulary_:
 
-                            # Find P (has word | category) for each category.
-                            word_prob = dict({
-                                1: self.p_has_word_category[word, 1],
-                                2: self.p_has_word_category[word, 2],
-                                3: self.p_has_word_category[word, 3],
-                                4: self.p_has_word_category[word, 4],
-                                5: self.p_has_word_category[word, 5]
-                            })
+                            occurences = vectorizer.vocabulary_[word]
 
-                            # Check for zero probabilities, replace them with our small number instead
-                            for i in range(5):
-                                if word_prob[i + 1] == 0:
-                                    word_prob[i + 1] = zero_prob
+                            # For rating category
+                            for cat in range(1, 6):
 
-                            # Add word probability for number of occurrences of word
-                            line_prob[1] += word_prob[1] * vectorizer.vocabulary_[word]
-                            line_prob[2] += word_prob[2] * vectorizer.vocabulary_[word]
-                            line_prob[3] += word_prob[3] * vectorizer.vocabulary_[word]
-                            line_prob[4] += word_prob[4] * vectorizer.vocabulary_[word]
-                            line_prob[5] += word_prob[5] * vectorizer.vocabulary_[word]
+                                # find P (has word | category)
+                                prob = self.p_has_word_category[word, cat]
+
+                                # if word prob is zero for category, set to near zero value instead
+                                if prob == 0:
+                                    prob = zero_prob
+
+                                # Add P (has word | category) for number of occurrences of word
+                                line_prob[cat] += prob * occurences
 
                             # if feature regression, add word vector
                             if self.incFeatures:
                                 feat = self.get_feature_vector(word)
-                                line_useful += feat['useful']
-                                line_funny += feat['funny']
-                                line_cool += feat['cool']
+                                line_useful += float(feat['useful'])
+                                line_funny += float(feat['funny'])
+                                line_cool += float(feat['cool'])
 
-                        # Find highest prob classification for line
+                        # Find highest prob classification for line and compare to actual
                         rating = max(line_prob, key=line_prob.get)
-
                         if rating is line_rating_ac:
                             test_correct += 1
                         else:
@@ -375,10 +454,13 @@ class NaiveBayes(object):
                             residual_absolute = (abs(line_useful - line_useful_ac) + abs(line_funny - line_funny_ac)
                                                  + abs(line_cool - line_cool_ac))
 
-                            residual_squared = numpy.square(residual_absolute)
+                            useful_residual_absolute_total += abs(line_useful - line_useful_ac)
+                            funny_residual_absolute_total += abs(line_funny - line_funny_ac)
+                            cool_residual_absolute_total += abs(line_cool - line_cool_ac)
 
-                            residual_absolute_total += residual_absolute
-                            residual_squared_total += residual_squared
+                            useful_residual_squared_total += numpy.square(line_useful - line_useful_ac)
+                            funny_residual_squared_total += numpy.square(line_funny - line_funny_ac)
+                            cool_residual_squared_total += numpy.square(line_cool - line_cool_ac)
 
                     # Handling for text that is all stopwords, such as "a a a a a" or "x"
                     except ValueError as e:
@@ -388,7 +470,7 @@ class NaiveBayes(object):
                 test_total += 1
 
             chunk_time = time.time() - chunk_start
-            print('Completed prediction on {} samples in {:.2f} sec.'.format(test_total, chunk_time))
+            print('Completed testing chunk up to {} samples in {:.2f} sec.'.format(test_total, chunk_time))
 
         # Calculate test statistics
         test_time = datetime.datetime.now() - test_start
@@ -397,16 +479,31 @@ class NaiveBayes(object):
 
         print('Completed prediction on {} samples in {}.'.format(test_total, test_time))
         print('Found {} null entries in test file.'.format(test_null))
-        print('Rating Accuracy:     {:.2f} %'.format(accuracy))
+        print('Rating Accuracy:     {:.2f}%'.format(accuracy))
 
         if self.incFeatures:
-            print('Feature MAE:         {:.4f}'.format(residual_absolute_total / test_total))
-            print('Feature RMSE:        {:.4f}'.format(numpy.sqrt(residual_squared_total / test_total)))
+            useful_mae = useful_residual_absolute_total / test_total
+            useful_rmse = numpy.sqrt(useful_residual_squared_total / test_total)
+            cool_mae = cool_residual_absolute_total / test_total
+            cool_rmse = numpy.sqrt(cool_residual_squared_total / test_total)
+            funny_mae = funny_residual_absolute_total / test_total
+            funny_rmse = numpy.sqrt(funny_residual_squared_total / test_total)
+            avg_mae = numpy.average([useful_mae, cool_mae, funny_mae])
+            avg_rmse = numpy.average([useful_rmse, funny_rmse, cool_rmse])
+
+            print('Avg MAE:             {:.4f}'.format(avg_mae))
+            print('Avg RMSE:            {:.4f}'.format(avg_rmse))
+            print('Useful MAE:          {:.4f}'.format(useful_mae))
+            print('Useful RMSE:         {:.4f}'.format(useful_rmse))
+            print('Funny MAE:           {:.4f}'.format(funny_mae))
+            print('Funny RMSE:          {:.4f}'.format(funny_rmse))
+            print('Cool MAE:            {:.4f}'.format(cool_mae))
+            print('Cool RMSE:           {:.4f}'.format(cool_rmse))
 
 
 def main():
-    NaiveBayes()
+    NaiveBayes(parse_args(argparse.ArgumentParser(description='Probabalistic classifier')))
 
 
 if __name__ == "__main__":
-    main()1
+    main()

@@ -1,5 +1,6 @@
 import argparse
-
+import os
+import sys
 import numpy as np
 import sklearn.metrics
 import torch
@@ -12,6 +13,8 @@ from transformers import AutoTokenizer
 from SentimentNetwork import SentimentNetwork
 from SVM import funny_cool_useful, stars, use_train_model
 from YelpDataset import YelpDataset
+
+import NaiveBayes
 
 
 def tokenize(data_set, _tokenizer):
@@ -29,14 +32,14 @@ def get_accuracy(prediction, label):
 
 
 def train(
-    data_loader,
-    _model,
-    _classification_criterion,
-    _regression_criterion,
-    _optimizer,
-    _device,
-    _is_classification,
-    ratings_index,
+        data_loader,
+        _model,
+        _classification_criterion,
+        _regression_criterion,
+        _optimizer,
+        _device,
+        _is_classification,
+        ratings_index,
 ):
     _model.train()
     epoch_losses = []
@@ -67,14 +70,14 @@ def train(
 
 
 def evaluate(
-    data_loader,
-    _model,
-    _classification_criterion,
-    _regression_criterion,
-    _device,
-    _is_classification,
-    ratings_index,
-    _task,
+        data_loader,
+        _model,
+        _classification_criterion,
+        _regression_criterion,
+        _device,
+        _is_classification,
+        ratings_index,
+        _task,
 ):
     _model.eval()
     epoch_losses = []
@@ -231,35 +234,85 @@ def run_neural_network(args):
         print(f"valid_loss: {valid_loss:.3f}")
 
 
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        # MEASURING TOOLS
+        #            |Yashar Nesvaderani - A00984009
+        #           0|       10|       20|       30|       40||      50|       60|       70|       80|
+        description=("===================Sentiment Analysis For COMP8085 Project 2====================\n" +
+                     "                                   Built By:                                    \n" +
+                     "                          Yashsvi Girdhar - A01084035\n" +
+                     "                             Aaron Moen - A01313456\n" +
+                     "                         Yashar Nesvaderani - A00984009\n" +
+                     "================================================================================\n" +
+                     " Master Program for running all three sentiment analysis models in the project. \n"
+                     ), formatter_class=argparse.RawDescriptionHelpFormatter,)
+    parser.add_argument("--model", type=str, help="Model to use for Sentiment Analysis: nn, svm, nb", required=True)
+    parser.add_argument("--test_file", type=str, help=".jsonl file to to test with. Required.", required=True)
+    parser.add_argument("--training_file", type=str, help=".jsonl file to to train with. Must match model.")
+    parser.add_argument("--trained_model", type=str, help="Trained pickled model file to load.")
+    parser.add_argument("--pickle", action='store_true', help="Flag to export trained model as pickle file.")
+    parser.add_argument("--out_file", type=str, help="Custom location to export pickle file to.",
+                        default="pickled_models/new_model.pkl")
+    parser.add_argument("--task", type=str, help="stars, useful, funny, cool, used for SVM.", default='stars')
+    parser.add_argument("--experiment1", action="store_true", help="Runs with experiment 1, if svm selected.")
+    parser.add_argument("--experiment2", action="store_true", help="Runs with experiment 2, if svm selected.")
+    myArgs = parser.parse_args()
+
+    # validate model
+    if myArgs.model not in ("nn", "svm", "nb"):
+        print('Model selection must be either "nn", "svm" or "nb"')
+        sys.exit(0)
+
+    # validate test_file
+    if not os.path.isfile(myArgs.test_file):
+        print('Unable to find training data file at ' + myArgs.test_file)
+        print('Use -h for help')
+        sys.exit(0)
+
+    # validate training choice
+    if not myArgs.trained_model and not myArgs.training_file:
+        print('Either a trained model file or a training data file must be provided.')
+        print('Use -h for help')
+        sys.exit(0)
+
+    # validate trained_model
+    if myArgs.trained_model and not os.path.isfile(myArgs.trained_model):
+        print('Unable to find trained model file at ' + myArgs.trained_model)
+        print('Use -h for help')
+        sys.exit(0)
+
+    # validate training_file
+    if myArgs.training_file and not os.path.isfile(myArgs.training_file):
+        print('Unable to find training data file at ' + myArgs.training_file)
+        sys.exit(0)
+
+    # validate task
+    if myArgs.task not in ("stars", "useful", "funny", "cool"):
+        print('Task value must be either "stars", "useful", "funny", or "cool"')
+        print('Use -h for help')
+        sys.exit(0)
+
+    # Validate impossible pickle
+    if myArgs.pickle and not myArgs.trained_model:
+        print('Cannot Pickle a pre-trained model.')
+        print('Running tests with pre-trained model anyways.')
+        myArgs.pickle = False
+
+    return myArgs
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Sentiment Analysis")
-    parser.add_argument(
-        "--task", type=str, help="stars, useful, funny, cool", required=True
-    )
-    parser.add_argument("--trained_model", type=str, help="Trained pickled model file.")
-    parser.add_argument(
-        "--training_file", type=str, help=".jsonl file to to train with."
-    )
-    parser.add_argument(
-        "--test_file", type=str, help=".jsonl file to to test with.", required=True
-    )
-    parser.add_argument(
-        "--model",
-        type=str,
-        help="Model to use for Sentiment Analysis: nn, svm, tbd",
-        required=True,
-    )
-    parser.add_argument(
-        "--experiment1", action="store_true", help="Runs with experiment 1"
-    )
-    parser.add_argument(
-        "--experiment2", action="store_true", help="Runs with experiment 2"
-    )
-    args = parser.parse_args()
+
+    args = parse_args(sys.argv[1:])
 
     if args.model == "nn":
         run_neural_network(args)
-    if args.model == "svm":
+
+    elif args.model == "nb":
+        NaiveBayes.NaiveBayes(args, True)
+
+    elif args.model == "svm":
         if args.trained_model:
             use_train_model(args.test_file, args.task, args.trained_model)
         else:
